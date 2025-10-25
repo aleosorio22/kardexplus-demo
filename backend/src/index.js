@@ -41,7 +41,7 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      'https://kardexplus.netlify.app',
+      'https://kardexplus-demo.netlify.app',
       'https://kardexplus.cafeelangel.com',
       'http://localhost:5173',
       'http://localhost:5174'
@@ -72,7 +72,7 @@ app.use(express.json());
 
 // Rutas
 app.get('/', (req, res) => {
-  res.json({ message: 'API de Sistema de Inventarios para Café El Ángel' });
+  res.json({ message: 'API de Sistema de Inventarios desarrollado por DevSolutions S.A.' });
 });
 
 // Rutas de usuarios
