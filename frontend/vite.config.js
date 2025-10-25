@@ -5,6 +5,6 @@ import react from '@vitejs/plugin-react-swc'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ['jspdf', 'jspdf-autotable', 'xlsx']
+    include: ['jspdf', 'jspdf-autotable', 'xlsx-js-style']
   }
 })

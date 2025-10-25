@@ -6,7 +6,7 @@
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style'; // Usar xlsx-js-style para soportar estilos
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
@@ -131,68 +131,191 @@ export const reporteService = {
      */
     async exportarExcel(data, filename = 'reporte_inventario', infoEmpresa = null) {
         try {
+            console.log('📊 Iniciando exportación a Excel...');
+            
             // Obtener información de empresa si no se proporcionó
             if (!infoEmpresa) {
                 const response = await this.getInfoEmpresa();
-                infoEmpresa = response.data || response; // response.data contiene { success, data }
+                infoEmpresa = response.data || response;
             }
 
             // Crear workbook
             const wb = XLSX.utils.book_new();
-
-            // Preparar datos para el sheet
             const worksheetData = [];
+            let currentRow = 0;
 
-            // Agregar encabezado de empresa
+            // ENCABEZADO DE EMPRESA (Filas 1-7)
             if (infoEmpresa) {
                 worksheetData.push([infoEmpresa.nombre || 'KardexPlus']);
                 worksheetData.push([infoEmpresa.direccion || '']);
                 worksheetData.push([`Tel: ${infoEmpresa.telefono || ''} | Email: ${infoEmpresa.email || ''}`]);
                 worksheetData.push([`NIT: ${infoEmpresa.nit || ''}`]);
-                worksheetData.push([]); // Línea en blanco
+                worksheetData.push([]);
                 worksheetData.push([`Reporte generado: ${new Date().toLocaleString('es-ES')}`]);
-                worksheetData.push([]); // Línea en blanco
+                worksheetData.push([]);
+                currentRow = 7;
             }
 
-            // Convertir datos a formato de hoja
+            // DATOS DE LA TABLA
+            const headerRowIndex = currentRow;
             if (data && data.length > 0) {
-                // Agregar headers
                 const headers = Object.keys(data[0]);
                 worksheetData.push(headers);
-
-                // Agregar datos
+                
                 data.forEach(row => {
                     worksheetData.push(Object.values(row));
                 });
             }
 
-            // Crear worksheet
+            // Crear worksheet desde array
             const ws = XLSX.utils.aoa_to_sheet(worksheetData);
 
-            // Ajustar ancho de columnas
-            const colWidths = [];
+            // ============================================
+            // APLICAR ESTILOS Y FORMATO
+            // ============================================
+
+            // Estilo para el título de la empresa (Fila 1)
+            if (ws['A1']) {
+                ws['A1'].s = {
+                    font: { name: 'Calibri', sz: 18, bold: true, color: { rgb: '0A1929' } },
+                    alignment: { horizontal: 'left', vertical: 'center' },
+                    fill: { fgColor: { rgb: 'E3F2FD' } }
+                };
+            }
+
+            // Estilo para información de empresa (Filas 2-4)
+            for (let row = 2; row <= 4; row++) {
+                const cellRef = `A${row}`;
+                if (ws[cellRef]) {
+                    ws[cellRef].s = {
+                        font: { name: 'Calibri', sz: 10, color: { rgb: '424242' } },
+                        alignment: { horizontal: 'left', vertical: 'center' }
+                    };
+                }
+            }
+
+            // Estilo para fecha de generación (Fila 6)
+            if (ws['A6']) {
+                ws['A6'].s = {
+                    font: { name: 'Calibri', sz: 9, italic: true, color: { rgb: '757575' } },
+                    alignment: { horizontal: 'left', vertical: 'center' }
+                };
+            }
+
+            // ESTILO PARA ENCABEZADOS DE TABLA (Fila 8)
             if (data && data.length > 0) {
+                const headers = Object.keys(data[0]);
+                const headerRow = headerRowIndex + 1; // Excel usa base 1
+                
+                headers.forEach((header, colIndex) => {
+                    const cellRef = XLSX.utils.encode_cell({ r: headerRowIndex, c: colIndex });
+                    if (ws[cellRef]) {
+                        ws[cellRef].s = {
+                            font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
+                            fill: { fgColor: { rgb: '2980B9' } }, // Azul
+                            alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+                            border: {
+                                top: { style: 'thin', color: { rgb: '000000' } },
+                                bottom: { style: 'thin', color: { rgb: '000000' } },
+                                left: { style: 'thin', color: { rgb: '000000' } },
+                                right: { style: 'thin', color: { rgb: '000000' } }
+                            }
+                        };
+                    }
+                });
+
+                // ESTILO PARA FILAS DE DATOS (con alternancia de colores)
+                data.forEach((row, rowIndex) => {
+                    const excelRow = headerRowIndex + rowIndex + 1;
+                    const isEven = rowIndex % 2 === 0;
+                    
+                    Object.keys(row).forEach((key, colIndex) => {
+                        const cellRef = XLSX.utils.encode_cell({ r: excelRow, c: colIndex });
+                        if (ws[cellRef]) {
+                            const cellValue = row[key];
+                            
+                            // Determinar alineación según el tipo de dato
+                            let alignment = { horizontal: 'left', vertical: 'center' };
+                            if (typeof cellValue === 'number' || !isNaN(parseFloat(cellValue))) {
+                                alignment.horizontal = 'right';
+                            }
+                            
+                            ws[cellRef].s = {
+                                font: { name: 'Calibri', sz: 10 },
+                                fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'F5F5F5' } }, // Alternancia
+                                alignment: alignment,
+                                border: {
+                                    top: { style: 'thin', color: { rgb: 'E0E0E0' } },
+                                    bottom: { style: 'thin', color: { rgb: 'E0E0E0' } },
+                                    left: { style: 'thin', color: { rgb: 'E0E0E0' } },
+                                    right: { style: 'thin', color: { rgb: 'E0E0E0' } }
+                                }
+                            };
+                            
+                            // Formato numérico para columnas monetarias
+                            if (key.includes('Costo') || key.includes('Precio') || key.includes('Valor')) {
+                                ws[cellRef].z = '"Q"#,##0.00'; // Formato quetzales
+                            }
+                        }
+                    });
+                });
+            }
+
+            // ============================================
+            // AJUSTAR ANCHO DE COLUMNAS AUTOMÁTICAMENTE
+            // ============================================
+            if (data && data.length > 0) {
+                const colWidths = [];
                 Object.keys(data[0]).forEach((key, index) => {
-                    const maxLength = Math.max(
-                        key.length,
+                    // Calcular ancho basado en contenido
+                    const headerLength = key.length;
+                    const maxDataLength = Math.max(
                         ...data.map(row => String(row[key] || '').length)
                     );
-                    colWidths.push({ wch: Math.min(maxLength + 2, 50) });
+                    const width = Math.max(headerLength, maxDataLength);
+                    colWidths.push({ wch: Math.min(width + 3, 50) }); // Máximo 50 caracteres
                 });
                 ws['!cols'] = colWidths;
             }
 
+            // ============================================
+            // AJUSTAR ALTURA DE FILAS
+            // ============================================
+            ws['!rows'] = [
+                { hpt: 25 }, // Fila 1: Título empresa (altura 25)
+                { hpt: 15 }, // Fila 2: Dirección
+                { hpt: 15 }, // Fila 3: Tel/Email
+                { hpt: 15 }, // Fila 4: NIT
+                { hpt: 10 }, // Fila 5: Espacio
+                { hpt: 15 }, // Fila 6: Fecha
+                { hpt: 10 }, // Fila 7: Espacio
+                { hpt: 20 }  // Fila 8: Encabezados (altura 20)
+            ];
+
+            // ============================================
+            // MERGE CELLS PARA ENCABEZADO DE EMPRESA
+            // ============================================
+            const numCols = data && data.length > 0 ? Object.keys(data[0]).length : 5;
+            ws['!merges'] = [
+                { s: { r: 0, c: 0 }, e: { r: 0, c: numCols - 1 } }, // Título empresa
+                { s: { r: 1, c: 0 }, e: { r: 1, c: numCols - 1 } }, // Dirección
+                { s: { r: 2, c: 0 }, e: { r: 2, c: numCols - 1 } }, // Tel/Email
+                { s: { r: 3, c: 0 }, e: { r: 3, c: numCols - 1 } }, // NIT
+                { s: { r: 5, c: 0 }, e: { r: 5, c: numCols - 1 } }  // Fecha
+            ];
+
             // Agregar worksheet al workbook
             XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
 
-            // Generar archivo
+            // Generar y descargar archivo
             const fecha = new Date().toISOString().split('T')[0];
             XLSX.writeFile(wb, `${filename}_${fecha}.xlsx`);
 
+            console.log('✅ Excel exportado exitosamente');
             return { success: true, message: 'Reporte exportado exitosamente' };
             
         } catch (error) {
-            console.error('Error exportando a Excel:', error);
+            console.error('❌ Error exportando a Excel:', error);
             throw new Error('Error al exportar el reporte a Excel');
         }
     },
